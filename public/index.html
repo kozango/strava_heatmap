@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Strava Activities Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <style>
+    #map {
+      height: 100vh;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    // 地図の初期表示位置を伊豆半島付近に設定
+    const map = L.map('map').setView([34.9167, 138.9167], 10);
+
+    // モノクロの地図タイル
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '©OpenStreetMap, ©CartoDB'
+    }).addTo(map);
+
+    // ズームレベルが変更された時に線の太さを調整
+    map.on('zoomend', function() {
+      document.querySelectorAll('.leaflet-overlay-pane path').forEach(path => {
+        path.style.strokeWidth = map.getZoom() < 11 ? '2px' : '3px';
+      });
+    });
+
+    // アクティビティデータを取得
+    fetch('/activities.json')
+      .then(response => response.json())
+      .then(activities => {
+        console.log('Activities loaded:', activities.length);  // データ取得の確認用
+
+        activities.forEach(activity => {
+          if (activity.map && activity.map.summary_polyline) {
+            const points = decodePolyline(activity.map.summary_polyline);
+            
+            // アクティビティタイプに基づいて色を設定
+            let color = '#FF0000';  // デフォルト：赤
+            if (activity.type === 'Ride') color = '#0000FF';  // 自転車：青
+            if (activity.type === 'Run') color = '#FF4500';   // ラン：オレンジ赤
+
+            // 軌跡を描画
+            L.polyline(points, {
+              color: color,
+              weight: map.getZoom() < 11 ? 2 : 3,  // ズームレベルによって線の太さを変える
+              opacity: 0.7,                         // 透明度を少し上げる
+              smoothFactor: 1.2                     // 線を滑らかに
+            }).addTo(map);
+          }
+        });
+      })
+      .catch(error => console.error('Error:', error));
+
+    // ポリライン復号化関数
+    function decodePolyline(encoded) {
+      var points = [];
+      var index = 0, len = encoded.length;
+      var lat = 0, lng = 0;
+      while (index < len) {
+        var b, shift = 0, result = 0;
+        do {
+          b = encoded.charAt(index++).charCodeAt(0) - 63;
+          result |= (b & 0x1f) << shift;
+          shift += 5;
+        } while (b >= 0x20);
+        var dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+        lat += dlat;
+        shift = 0;
+        result = 0;
+        do {
+          b = encoded.charAt(index++).charCodeAt(0) - 63;
+          result |= (b & 0x1f) << shift;
+          shift += 5;
+        } while (b >= 0x20);
+        var dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+        lng += dlng;
+        points.push([lat / 1e5, lng / 1e5]);
+      }
+      return points;
+    }
+  </script>
+</body>
+</html>
